@@ -121,6 +121,20 @@ Bu projenin çalışması için bir Supabase projesine ihtiyacınız var.
     alter table order_items enable row level security;
 
     -- RLS Politikaları (ÖRNEK - Kendi projenize göre özelleştirin!)
+
+    -- Yardımcı Fonksiyon: Mevcut kullanıcının rolünü getirir (Admin politikaları için kullanılır)
+    CREATE OR REPLACE FUNCTION public.get_my_role()
+    RETURNS TEXT AS $$
+    DECLARE
+      user_role TEXT;
+    BEGIN
+      -- Mevcut kullanıcının profilinden rolü seç
+      -- RLS'yi geçici olarak atlamak için SECURITY DEFINER kullanılır
+      SELECT role INTO user_role FROM public.profiles WHERE id = auth.uid();
+      RETURN user_role;
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+
     -- Herkesin aktif ürünleri ve masaları okuyabilmesi:
     create policy "Allow public read access to products" on coffee_products for select using (is_available = true);
     create policy "Allow public read access to tables" on cafe_tables for select using (is_active = true);
@@ -132,12 +146,18 @@ Bu projenin çalışması için bir Supabase projesine ihtiyacınız var.
     -- Giriş yapmış kullanıcıların yeni sipariş oluşturabilmesi:
     create policy "Allow individual insert for orders" on orders for insert with check (auth.uid() = user_id);
     create policy "Allow individual insert for order items" on order_items for insert with check (exists (select 1 from orders where orders.id = order_items.order_id and orders.user_id = auth.uid()));
-    -- Admin rolündeki kullanıcıların her şeyi yapabilmesi (DİKKATLİ KULLANIN):
-    create policy "Allow admin full access" on profiles for all using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'admin'));
-    create policy "Allow admin full access" on coffee_products for all using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'admin'));
-    create policy "Allow admin full access" on cafe_tables for all using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'admin'));
-    create policy "Allow admin full access" on orders for all using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'admin'));
-    create policy "Allow admin full access" on order_items for all using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'admin'));
+
+    -- Admin rolündeki kullanıcıların her şeyi yapabilmesi (GÜNCELLENDİ - Yardımcı fonksiyon kullanılıyor):
+    create policy "Allow admin full access" on profiles for all
+      using (public.get_my_role() = 'admin');
+    create policy "Allow admin full access" on coffee_products for all
+      using (public.get_my_role() = 'admin');
+    create policy "Allow admin full access" on cafe_tables for all
+      using (public.get_my_role() = 'admin');
+    create policy "Allow admin full access" on orders for all
+      using (public.get_my_role() = 'admin');
+    create policy "Allow admin full access" on order_items for all
+      using (public.get_my_role() = 'admin');
     ```
 
 *   **Önemli:** Yukarıdaki RLS politikaları sadece örnektir. Projenizin güvenlik ihtiyaçlarına göre bunları dikkatlice gözden geçirin ve düzenleyin.
